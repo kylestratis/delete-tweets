@@ -11,7 +11,7 @@ import twitter
 from dateutil.parser import parse
 
 __author__ = "Koen Rouwhorst"
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
 
 class TweetDestroyer(object):
@@ -22,6 +22,15 @@ class TweetDestroyer(object):
         try:
             print("delete tweet %s" % tweet_id)
             self.twitter_api.DestroyStatus(tweet_id)
+            # NOTE: A poor man's solution to honor Twitter's rate limits.
+            time.sleep(0.5)
+        except twitter.TwitterError as err:
+            print("Exception: %s\n" % err.message)
+
+    def unfavorite(self, tweet_id):
+        try:
+            print("unfavorite tweet %s" % tweet_id)
+            self.twitter_api.DestroyFavorite(tweet_id)
             # NOTE: A poor man's solution to honor Twitter's rate limits.
             time.sleep(0.5)
         except twitter.TwitterError as err:
@@ -53,9 +62,10 @@ class TweetReader(object):
             yield row
 
 
-def delete(tweetjs_path, date, r):
+def delete(tweetjs_path, date, r, unfavorite):
     with io.open(tweetjs_path, mode="r", encoding="utf-8") as tweetjs_file:
-        count = 0
+        del_count = 0
+        unfave_count = 0
 
         api = twitter.Api(consumer_key=os.environ["TWITTER_CONSUMER_KEY"],
                           consumer_secret=os.environ["TWITTER_CONSUMER_SECRET"],
@@ -66,9 +76,13 @@ def delete(tweetjs_path, date, r):
         tweets = json.loads(tweetjs_file.read()[25:])
         for row in TweetReader(tweets, date, r).read():
             destroyer.destroy(row["id_str"])
-            count += 1
+            del_count += 1
+            if unfavorite:
+                destroyer.unfavorite(row["id_str"])
+                unfave_count += 1
 
         print("Number of deleted tweets: %s\n" % count)
+        print("Number of unfavorited tweets: %s\n" % count)
 
 
 def main():
@@ -77,6 +91,7 @@ def main():
                         help="Delete tweets until this date")
     parser.add_argument("-r", dest="restrict", choices=["reply", "retweet"],
                         help="Restrict to either replies or retweets")
+    parser.add_argument("-u", dest="unfavorite", help="Unfavorite tweets in addition to deleting")
     parser.add_argument("file", help="display a square of a given number",
                         type=str)
 
@@ -89,7 +104,7 @@ def main():
         sys.stderr.write("Twitter API credentials not set.")
         exit(1)
 
-    delete(args.file, args.date, args.restrict)
+    delete(args.file, args.date, args.restrict, args.unfavorite)
 
 
 if __name__ == "__main__":
